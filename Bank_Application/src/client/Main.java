@@ -1,11 +1,14 @@
 package client;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Scanner;
+import Connection.DBconnection;
 import account.Account;
 import admin.Admin;
 import transaction.Transaction;
-
 public class Main {
     public static void main(String[] args) {
         Scanner sc = new Scanner(System.in);
@@ -14,14 +17,17 @@ public class Main {
         HashMap<String, ArrayList<Transaction>> TransactionDetails = new HashMap<>();
 
         // Predefined user and admin details
-        details.put("Arun", new Account(0001,"Arun","Savings",1000,"arun@123",6374181274L,"Coimbatore","Kinathukadavu"));
-        Admin_details.put("Boss", new Admin(102, "Boss", "12345"));
+        details.put("Arun", new Account(0001,"Aravinendh","Savings",1000,"ar@123",6374181274L,"Coimbatore","Kinathudavu"));
+        Admin_details.put("Admin", new Admin(102, "Admin", "12345"));
         
         Admin Ad_account = null;
         Account account = null;
         boolean flag = true;
 
         while (flag) {
+        	System.out.println("============================");
+        	System.out.println("Welcome to Bank Application:");
+        	System.out.println("============================");
             System.out.println("1. Login\n2. Logout");
             int eventType = sc.nextInt();
 
@@ -37,10 +43,10 @@ public class Main {
                             String userName = sc.next();
                             System.out.println("Enter Password :");
                             String password = sc.next();
-                            account = checkAccountExist(userName, password, details);
+                            account = checkAccountExist(userName, password);
 
                             if (account != null) {
-                                System.out.println("User has been logged in with Account no " + account.accountNumber);
+                                System.out.println("User has been logged in with Account ID " + account.accountNumber);
                                 TransactionDetails.put(account.userName, new ArrayList<Transaction>());
                                 
                                 // User-specific options after login
@@ -51,31 +57,70 @@ public class Main {
                                     int userChoice = sc.nextInt();
 
                                     switch (userChoice) {
-                                        case 1:
-                                            System.out.println("Your Account Balance is: " + account.balance);
-                                            break;
-                                        case 2:
-                                            System.out.println("Enter deposit amount: ");
-                                            double depositAmount = sc.nextDouble();
-                                            if (depositAmount > 0) {
-                                                account.balance += depositAmount;
+                                    case 1:
+                                        // Display current account balance from the database
+                                        try (Connection conn = DBconnection.getConnection()) {
+                                            String query = "SELECT balance FROM account WHERE name = ?";
+                                            PreparedStatement pstmt = conn.prepareStatement(query);
+                                            pstmt.setString(1, account.getUserName());
+                                            ResultSet rs = pstmt.executeQuery();
+                                            if (rs.next()) {
+                                                double balance = rs.getDouble("balance");
+                                                System.out.println("Your Account Balance is: " + balance);
+                                                account.setBalance(balance); // Update account object with latest balance
+                                            }
+                                        } catch (Exception e) {
+                                            System.out.println("Error fetching account balance: " + e.getMessage());
+                                        }
+                                        break;
+
+                                    case 2:
+                                        System.out.println("Enter deposit amount: ");
+                                        double depositAmount = sc.nextDouble();
+                                        if (depositAmount > 0) {
+                                            account.balance += depositAmount;
+
+                                            // Update balance in the database
+                                            try (Connection conn = DBconnection.getConnection()) {
+                                                String updateQuery = "UPDATE account SET balance = ? WHERE name = ?";
+                                                PreparedStatement pstmt = conn.prepareStatement(updateQuery);
+                                                pstmt.setDouble(1, account.balance);
+                                                pstmt.setString(2, account.getUserName());
+                                                pstmt.executeUpdate();
                                                 System.out.println("Deposit successful. New balance: " + account.balance);
-                                                addTransaction(TransactionDetails, account, "Deposit", depositAmount);
-                                            } else {
-                                                System.out.println("Invalid deposit amount.");
+                                            } catch (Exception e) {
+                                                System.out.println("Error updating balance: " + e.getMessage());
                                             }
-                                            break;
-                                        case 3:
-                                            System.out.println("Enter withdrawal amount: ");
-                                            double withdrawAmount = sc.nextDouble();
-                                            if (account.balance >= withdrawAmount) {
-                                                account.balance -= withdrawAmount;
+
+                                            addTransaction(TransactionDetails, account, "Deposit", depositAmount);
+                                        } else {
+                                            System.out.println("Invalid deposit amount.");
+                                        }
+                                        break;
+
+                                    case 3:
+                                        System.out.println("Enter withdrawal amount: ");
+                                        double withdrawAmount = sc.nextDouble();
+                                        if (account.balance >= withdrawAmount) {
+                                            account.balance -= withdrawAmount;
+
+                                            // Update balance in the database
+                                            try (Connection conn = DBconnection.getConnection()) {
+                                                String updateQuery = "UPDATE account SET balance = ? WHERE name = ?";
+                                                PreparedStatement pstmt = conn.prepareStatement(updateQuery);
+                                                pstmt.setDouble(1, account.balance);
+                                                pstmt.setString(2, account.getUserName());
+                                                pstmt.executeUpdate();
                                                 System.out.println("Withdrawal successful. New balance: " + account.balance);
-                                                addTransaction(TransactionDetails, account, "Withdrawal", withdrawAmount);
-                                            } else {
-                                                System.out.println("Insufficient balance.");
+                                            } catch (Exception e) {
+                                                System.out.println("Error updating balance: " + e.getMessage());
                                             }
-                                            break;
+
+                                            addTransaction(TransactionDetails, account, "Withdrawal", withdrawAmount);
+                                        } else {
+                                            System.out.println("Insufficient balance.");
+                                        }
+                                        break;
                                         case 4:
                                             System.out.println("Enter transfer amount: ");
                                             double transferAmount = sc.nextDouble();
@@ -131,11 +176,11 @@ public class Main {
                             String adminName = sc.next();
                             System.out.println("Enter Password :");
                             String password = sc.next();
-                            Ad_account = checkAccountExistAdmin(adminName, password, Admin_details);
+                            Ad_account = checkAccountExistAdmin(adminName, password);
 
                             if (Ad_account != null) {
                                 System.out.println("Admin has been logged in with ID " + Ad_account.getId());
-                                
+
                                 // Admin-specific options after login
                                 boolean adminFlag = true;
                                 while (adminFlag) {
@@ -143,50 +188,91 @@ public class Main {
                                     int adminChoice = sc.nextInt();
 
                                     switch (adminChoice) {
-                                        case 1:
-                                            System.out.println("Enter Account details...");
-                                            System.out.println("Enter username:");
-                                            String newUserName = sc.next();
-                                            System.out.println("Enter password:");
-                                            String newPassword = sc.next();
-                                            System.out.println("Enter balance:");
-                                            double newBalance = sc.nextDouble();
-                                            Account newAccount = new Account(100 + details.size(), newUserName, "Savings", newBalance, newPassword, 70123456, "Default Address", "Default Branch");
-                                            details.put(newUserName, newAccount);
-                                            System.out.println("Account created successfully.");
-                                            break;
+                                    case 1:
+                                        System.out.println("Enter Account details...");
+                                        System.out.print("Enter username: ");
+                                        String newUserName = sc.next();
+
+                                        System.out.print("Enter password: ");
+                                        String newPassword = sc.next();
+
+                                        System.out.print("Enter balance: ");
+                                        double newBalance = sc.nextDouble();
+
+                                        System.out.print("Enter phone number: ");
+                                        String phone = sc.next();
+
+                                        System.out.print("Enter address: ");
+                                        sc.nextLine();  
+                                        String address = sc.nextLine();
+
+                                        System.out.print("Enter branch: ");
+                                        String branch = sc.next();
+
+                                        try (Connection conn = DBconnection.getConnection()) {
+                                            String insertQuery = "INSERT INTO account (name, acctype, balance, pass, phone, address, branch) VALUES (?, 'Savings', ?, ?, ?, ?, ?)";
+                                            PreparedStatement pstmt = conn.prepareStatement(insertQuery);
+                                            pstmt.setString(1, newUserName);
+                                            pstmt.setDouble(2, newBalance);
+                                            pstmt.setString(3, newPassword);
+                                            pstmt.setString(4, phone);
+                                            pstmt.setString(5, address);
+                                            pstmt.setString(6, branch);
+                                            
+                                            pstmt.executeUpdate();
+                                            System.out.println("Account created successfully in database.");
+                                        } catch (Exception e) {
+                                            System.out.println("Error creating account: " + e.getMessage());
+                                        }
+                                        break;
+
                                         case 2:
                                             System.out.println("Displaying all accounts:");
-                                            for (String userName : details.keySet()) {
-                                                Account acc = details.get(userName);
-                                                System.out.println("User: " + acc.getUserName() + " | Balance: " + acc.getBalance());
-                                            }
-                                            break;
-                                        case 3:
-                                            System.out.println("Enter account number to deactivate: ");
-                                            long deactivateAccountNumber = sc.nextLong();
-                                            boolean accountFound = false;
-                                            for (String userName : details.keySet()) {
-                                                Account acc = details.get(userName);
-                                                if (acc.getAccountNumber() == deactivateAccountNumber) {
-                                                    details.remove(userName);  
-                                                    System.out.println("Account with account number " + deactivateAccountNumber + " has been deactivated.");
-                                                    accountFound = true;
-                                                    break;
+                                            // Fetch all accounts from the account table
+                                            try (Connection conn = DBconnection.getConnection()) {
+                                                String selectQuery = "SELECT * FROM account";
+                                                PreparedStatement pstmt = conn.prepareStatement(selectQuery);
+                                                ResultSet rs = pstmt.executeQuery();
+                                                if (!rs.isBeforeFirst()) { 
+                                                    System.out.println("No accounts found in the database.");
+                                                } else {
+                                                    while (rs.next()) {
+                                                        String userName = rs.getString("name");
+                                                        double balance = rs.getDouble("balance");
+                                                        System.out.println("User: " + userName + " | Balance: " + balance);
+                                                    }
                                                 }
-                                            }
-                                            
-                                            if (!accountFound) {
-                                                System.out.println("Account not found.");
+                                            } catch (Exception e) {
+                                                System.out.println("Error fetching accounts: " + e.getMessage());
                                             }
                                             break;
-                                            
+
+
+                                        case 3:
+                                            System.out.println("Enter account Id to deactivate: ");
+                                            int deactivateAccountNumber = sc.nextInt();
+                                            // Delete the account from the account table
+                                            try (Connection conn = DBconnection.getConnection()) {
+                                                String deleteQuery = "DELETE FROM account WHERE accid = ?";
+                                                PreparedStatement pstmt = conn.prepareStatement(deleteQuery);
+                                                pstmt.setInt(1, deactivateAccountNumber);
+                                                int rowsAffected = pstmt.executeUpdate();
+                                                if (rowsAffected > 0) {
+                                                    System.out.println("Account with accountId " + deactivateAccountNumber + " has been deactivated.");
+                                                } else {
+                                                    System.out.println("Account not found.");
+                                                }
+                                            } catch (Exception e) {
+                                                System.out.println("Error deactivating account: " + e.getMessage());
+                                            }
+                                            break;
+
                                         case 4:
                                             System.out.println("Admin has been logged out.");
                                             adminFlag = false;
                                             Ad_account = null;
                                             break;
-                                            
+
                                         default:
                                             System.out.println("Invalid choice.");
                                     }
@@ -199,9 +285,8 @@ public class Main {
                         }
                     }
                     break;
-
                 case 2:
-                    System.out.println("Logged out.");
+                    System.out.println(" Bank Application Logged out.\n\tThankYou!!");
                     account = null;
                     Ad_account = null;
                     flag = false;
@@ -211,23 +296,46 @@ public class Main {
             }
         }
     }
-
-    private static Account checkAccountExist(String userName, String password, HashMap<String, Account> details) {
-        Account account = details.get(userName);
-        if (account != null && account.password.equals(password)) {
-            return account;
+    private static Account checkAccountExist(String userName, String password) {
+        Account account = null;
+        try (Connection conn = DBconnection.getConnection()) {  
+            String query = "SELECT * FROM account WHERE name = ? AND pass = ?";
+            PreparedStatement pstmt = conn.prepareStatement(query);
+            pstmt.setString(1, userName);
+            pstmt.setString(2, password);
+            ResultSet rs = pstmt.executeQuery();
+            if (rs.next()) {
+                int accountNumber = rs.getInt("accid");
+                String name = rs.getString("name");
+                String accountType = rs.getString("acctype");
+                double balance = rs.getDouble("balance");
+                long phoneNumber = rs.getLong("phone");
+                String address = rs.getString("address");
+                String branch = rs.getString("branch");
+                account = new Account(accountNumber, name, accountType, balance, password, phoneNumber, address, branch);
+            }
+        } catch (Exception e) {
+            System.out.println("Database connection error: " + e.getMessage());
         }
-        return null;
+        return account;  
     }
-
-    private static Admin checkAccountExistAdmin(String adminName, String password, HashMap<String, Admin> Admin_details) {
-        Admin admin = Admin_details.get(adminName);
-        if (admin != null && admin.getPassword().equals(password)) {
-            return admin;
+    private static Admin checkAccountExistAdmin(String adminName, String password) {
+        Admin admin = null;
+        try (Connection conn = DBconnection.getConnection()) { 
+            String query = "SELECT * FROM admin WHERE username = ? AND pass = ?";
+            PreparedStatement pstmt = conn.prepareStatement(query);
+            pstmt.setString(1, adminName);
+            pstmt.setString(2, password);
+            ResultSet rs = pstmt.executeQuery();
+            if (rs.next()) {
+                int id = rs.getInt("adminid");
+                admin = new Admin(id, adminName, password);
+            }
+        } catch (Exception e) {
+            System.out.println("Database connection error: " + e.getMessage());
         }
-        return null;
+        return admin;
     }
-
     private static void addTransaction(HashMap<String, ArrayList<Transaction>> TransactionDetails, Account account, String type, double amount) {
         int fromAccountId = 123;
         int toAccountId = 101;  
