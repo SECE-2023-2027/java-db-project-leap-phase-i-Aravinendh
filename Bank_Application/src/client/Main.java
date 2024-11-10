@@ -15,10 +15,11 @@ public class Main {
         HashMap<String, Account> details = new HashMap<>();
         HashMap<String, Admin> Admin_details = new HashMap<>();
         HashMap<String, ArrayList<Transaction>> TransactionDetails = new HashMap<>();
-
+        Connection dbConnection = DBconnection.getConnection();
+		Transaction transaction = new Transaction(dbConnection);
         // Predefined user and admin details
-        details.put("Arun", new Account(0001,"Aravinendh","Savings",1000,"ar@123",6374181274L,"Coimbatore","Kinathudavu"));
-        Admin_details.put("Admin", new Admin(102, "Admin", "12345"));
+        details.put("Arun", new Account(0001,"Ar","Savings",1000,"ar@123",6374181274L,"Coimbatore","Kinathukadavu"));
+        Admin_details.put("Boss", new Admin(102, "Boss", "12345"));
         
         Admin Ad_account = null;
         Account account = null;
@@ -69,6 +70,8 @@ public class Main {
                                                 System.out.println("Your Account Balance is: " + balance);
                                                 account.setBalance(balance); // Update account object with latest balance
                                             }
+                                            rs.close();
+                                            pstmt.close();
                                         } catch (Exception e) {
                                             System.out.println("Error fetching account balance: " + e.getMessage());
                                         }
@@ -77,6 +80,7 @@ public class Main {
                                     case 2:
                                         System.out.println("Enter deposit amount: ");
                                         double depositAmount = sc.nextDouble();
+                                        
                                         if (depositAmount > 0) {
                                             account.balance += depositAmount;
 
@@ -87,12 +91,15 @@ public class Main {
                                                 pstmt.setDouble(1, account.balance);
                                                 pstmt.setString(2, account.getUserName());
                                                 pstmt.executeUpdate();
+
                                                 System.out.println("Deposit successful. New balance: " + account.balance);
+
+                                                // Log the deposit transaction
+                                                Transaction transaction1 = new Transaction(conn);
+                                                transaction1.addTransaction(account.getAccountNumber(), account.getAccountNumber(), "Deposit", depositAmount);
                                             } catch (Exception e) {
                                                 System.out.println("Error updating balance: " + e.getMessage());
                                             }
-
-                                            addTransaction(TransactionDetails, account, "Deposit", depositAmount);
                                         } else {
                                             System.out.println("Invalid deposit amount.");
                                         }
@@ -101,7 +108,8 @@ public class Main {
                                     case 3:
                                         System.out.println("Enter withdrawal amount: ");
                                         double withdrawAmount = sc.nextDouble();
-                                        if (account.balance >= withdrawAmount) {
+                                        
+                                        if (account.balance >= withdrawAmount && withdrawAmount > 0) {
                                             account.balance -= withdrawAmount;
 
                                             // Update balance in the database
@@ -111,47 +119,71 @@ public class Main {
                                                 pstmt.setDouble(1, account.balance);
                                                 pstmt.setString(2, account.getUserName());
                                                 pstmt.executeUpdate();
+
                                                 System.out.println("Withdrawal successful. New balance: " + account.balance);
+
+                                                // Log the withdrawal transaction
+                                                Transaction transaction1 = new Transaction(conn);
+                                                transaction1.addTransaction(account.getAccountNumber(), account.getAccountNumber(), "Withdrawal", withdrawAmount);
                                             } catch (Exception e) {
                                                 System.out.println("Error updating balance: " + e.getMessage());
                                             }
-
-                                            addTransaction(TransactionDetails, account, "Withdrawal", withdrawAmount);
+                                        } else if (withdrawAmount <= 0) {
+                                            System.out.println("Invalid withdrawal amount.");
                                         } else {
                                             System.out.println("Insufficient balance.");
                                         }
                                         break;
-                                        case 4:
-                                            System.out.println("Enter transfer amount: ");
-                                            double transferAmount = sc.nextDouble();
+                                    case 4:
+                                        System.out.println("Enter transfer amount: ");
+                                        double transferAmount = sc.nextDouble();
 
-                                            if (account.balance >= transferAmount) {
-                                                System.out.println("Enter recipient account number: ");
-                                                long recipientAccount = sc.nextLong();
+                                        if (account.balance >= transferAmount) {
+                                            System.out.println("Enter recipient account number: ");
+                                            long recipientAccount = sc.nextLong();
 
-                                                // Check if the recipient account is the same as the sender account
-                                                if (account.accountNumber == recipientAccount) {
-                                                    System.out.println("You cannot transfer money to your own account.");
-                                                } else {
-                                                    account.balance -= transferAmount;
-                                                    System.out.println("Transfer successful. New balance: " + account.balance);
-                                                    addTransaction(TransactionDetails, account, "Transfer", transferAmount);
-                                                }
+                                            // Check if the recipient account is the same as the sender account
+                                            if (account.accountNumber == recipientAccount) {
+                                                System.out.println("You cannot transfer money to your own account.");
                                             } else {
-                                                System.out.println("Insufficient balance.");
+                                                // Deduct from sender's account
+                                                account.balance -= transferAmount;
+                                                transaction.updateAccountBalance(account.accountNumber, account.balance);
+
+                                                // Retrieve and update the recipient's balance
+                                                double recipientBalance = transaction.getAccountBalance(recipientAccount);
+                                                recipientBalance += transferAmount;
+                                                transaction.updateAccountBalance(recipientAccount, recipientBalance);
+
+                                                System.out.println("Transfer successful. New balance: " + account.balance);
+
+                                                // Record the transaction in the transaction_history table
+                                                transaction.addTransaction((int) account.accountNumber, (int) recipientAccount, "Transfer", transferAmount);
                                             }
-                                            break;
-                                        case 5: // Transaction History
-                                            System.out.println("Transaction History:");
-                                            ArrayList<Transaction> userTransactions = TransactionDetails.get(account.getUserName());
-                                            if (userTransactions != null && !userTransactions.isEmpty()) {
-                                                for (Transaction trans : userTransactions) {
-                                                    System.out.println("Transaction ID: " + trans.getTransactionId() + ", Date: " + trans.getDate() + ", Type: " + trans.getTransactionType() + ", Amount: " + trans.getTransactionAccount());
-                                                }
-                                            } else {
-                                                System.out.println("No transactions found.");
+                                        } else {
+                                            System.out.println("Insufficient balance.");
+                                        }
+                                        break;
+
+                                    case 5: // Transaction History
+                                        System.out.println("Transaction History:");
+
+                                        // Fetch transaction history from the database
+                                        ArrayList<Transaction> userTransactions = transaction.getTransactionHistory(account.getAccountNumber());
+
+                                        if (userTransactions != null && !userTransactions.isEmpty()) {
+                                            System.out.println("-------------------------------------------------------");
+                                            for (Transaction trans : userTransactions) {
+                                                System.out.println("| Transaction ID: " + trans.getTransactionId());
+                                                System.out.println("| Date: " + trans.getDate());
+                                                System.out.println("| Type: " + trans.getTransactionType());
+                                                System.out.println("| Amount: " + trans.getTransactionAccount());
+                                                System.out.println("-------------------------------------------------------");
                                             }
-                                            break;
+                                        } else {
+                                            System.out.println("No transactions found.");
+                                        }
+                                        break;
                                         case 6:
                                             System.out.println("User has been logged out.");
                                             userFlag = false;
@@ -210,7 +242,7 @@ public class Main {
                                         String branch = sc.next();
 
                                         try (Connection conn = DBconnection.getConnection()) {
-                                            String insertQuery = "INSERT INTO account (name, acctype, balance, pass, phone, address, branch) VALUES (?, 'Savings', ?, ?, ?, ?, ?)";
+                                            String insertQuery = "INSERT INTO account (name, acc_type, balance, pass, phone, address, branch) VALUES (?, 'Savings', ?, ?, ?, ?, ?)";
                                             PreparedStatement pstmt = conn.prepareStatement(insertQuery);
                                             pstmt.setString(1, newUserName);
                                             pstmt.setDouble(2, newBalance);
@@ -307,7 +339,7 @@ public class Main {
             if (rs.next()) {
                 int accountNumber = rs.getInt("accid");
                 String name = rs.getString("name");
-                String accountType = rs.getString("acctype");
+                String accountType = rs.getString("acc_type");
                 double balance = rs.getDouble("balance");
                 long phoneNumber = rs.getLong("phone");
                 String address = rs.getString("address");
@@ -335,15 +367,5 @@ public class Main {
             System.out.println("Database connection error: " + e.getMessage());
         }
         return admin;
-    }
-    private static void addTransaction(HashMap<String, ArrayList<Transaction>> TransactionDetails, Account account, String type, double amount) {
-        int fromAccountId = 123;
-        int toAccountId = 101;  
-        int transactionId = 4567;
-        String date = "12-Nov-2023";
-        Transaction transaction = new Transaction(fromAccountId, toAccountId, transactionId++, account.getAccountNumber(), date, type);
-        ArrayList<Transaction> prevTrans = TransactionDetails.get(account.getUserName());
-        prevTrans.add(transaction);
-        TransactionDetails.put(account.getUserName(), prevTrans);
     }
 }
